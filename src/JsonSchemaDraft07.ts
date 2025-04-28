@@ -5,11 +5,10 @@
 import { pipe, Schema as S } from "effect"
 
 const CombinatorFields = {
-  allOf: pipe(
+  allOf: S.optional(
     S.Array(
       S.suspend((): S.Schema<BaseSchema> => BaseSchema),
     ),
-    S.optional,
   ),
   anyOf: pipe(
     S.Array(
@@ -57,12 +56,11 @@ const MetadataFields = {
     S.String,
     S.optional,
   ),
-  definitions: pipe(
+  definitions: S.optional(
     S.Record({
       key: S.String,
-      value: S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+      value: S.suspend((): S.Schema<TypedSchema> => TypedSchema),
     }),
-    S.optional,
   ),
 }
 
@@ -118,14 +116,14 @@ export class ArraySchema extends S.Class<ArraySchema>("ArraySchema")({
   type: S.Literal("array"),
   items: pipe(
     S.Array(
-      S.suspend((): typeof ValueSchema => ValueSchema),
+      S.suspend((): typeof JsonSchema => JsonSchema),
     ),
     S.optional,
   ),
   additionalItems: S.optional(
     S.Union(
       S.Boolean,
-      S.suspend((): typeof ValueSchema => ValueSchema),
+      S.suspend((): typeof JsonSchema => JsonSchema),
     ),
   ),
   minItems: pipe(
@@ -141,7 +139,7 @@ export class ArraySchema extends S.Class<ArraySchema>("ArraySchema")({
     S.optional,
   ),
   contains: S.optional(
-    S.suspend((): typeof ValueSchema => ValueSchema),
+    S.suspend((): typeof JsonSchema => JsonSchema),
   ),
 }) {}
 
@@ -317,7 +315,22 @@ export const TypeNames = [
   "object",
 ] as const
 
-export class JsonSchema extends S.Class<StringSchema>("JsonSchema")({
+const TypeLiteral = S.Literal(...TypeNames)
+
+/**
+ * JSON Schema can have multiple types and the validation fields are named in a way
+ * that they don't conflict across types.
+ */
+export class TypedSchema extends S.Class<TypedSchema>("TypedSchema")({
+  ...StringSchema.fields,
+  ...IntegerSchema.fields,
+  ...NumberSchema.fields,
+  ...BooleanSchema.fields,
+  ...NullSchema.fields,
+  ...ObjectSchema.fields,
+
+  // spread it after previous schemas to make sure common fields
+  // support all types
   ...makeBaseFields(S.Union(
     S.String,
     S.Number,
@@ -330,15 +343,12 @@ export class JsonSchema extends S.Class<StringSchema>("JsonSchema")({
     }),
   )),
 
-  ...StringSchema.fields,
-  ...IntegerSchema.fields,
-  ...NumberSchema.fields,
-  ...BooleanSchema.fields,
-  ...NullSchema.fields,
-  ...ObjectSchema.fields,
-
-  type: S.Array(
-    S.Literal(...TypeNames),
+  type: pipe(
+    S.Union(
+      TypeLiteral,
+      S.Array(TypeLiteral),
+    ),
+    S.optional,
   ),
 }) {}
 
@@ -351,7 +361,9 @@ const RefSchema = S.Struct({
   $ref: JsonPointer,
 })
 
-export const ValueSchema = S.Union(
+export const JsonSchema = S.Union(
   RefSchema,
-  JsonSchema,
-)
+  TypedSchema,
+).annotations({
+  name: "JsonSchema",
+})

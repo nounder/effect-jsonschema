@@ -1,5 +1,5 @@
 import { test } from "bun:test"
-import { Effect, pipe, Schema } from "effect"
+import { Data, Effect, Equal, pipe, Pretty, Schema } from "effect"
 import JsonSchemaDraft07Json from "../samples/JsonSchemaDraft07MetaSchema.json" with {
   type: "json",
 }
@@ -10,9 +10,14 @@ const effect = effectFn()
 
 test("parse", () =>
   effect(function*() {
-    const schema = yield* pipe(
-      Schema.decodeUnknown(JsonSchema)(JsonSchemaDraft07Json),
+    const decodedSchema = yield* Schema.decodeUnknown(JsonSchema)(JsonSchemaDraft07Json)
+
+    yield* Effect.log(
+      Equal.equals(
+        Data.struct(decodedSchema),
+        Data.struct(JsonSchemaDraft07Json),
+      ),
     )
 
-    yield* Effect.log(schema)
+    console.log(decodedSchema)
   }))
