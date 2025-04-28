@@ -7,32 +7,32 @@ import { pipe, Schema as S } from "effect"
 const CombinatorFields = {
   allOf: S.optional(
     S.Array(
-      S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
     ),
   ),
-  anyOf: pipe(
+  anyOf: S.optional(
     S.Array(
-      S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
     ),
-    S.optional,
   ),
-  oneOf: pipe(
+  oneOf: S.optional(
     S.Array(
-      S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
     ),
-    S.optional,
   ),
+  // 'not' keyword works alongside other keywords in the schema, and all conditions are combined with a logical AND.
+  // todo narrow only to validation keywords?
   not: S.optional(
-    S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
   ),
   if: S.optional(
-    S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
   ),
   then: S.optional(
-    S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
   ),
   else: S.optional(
-    S.suspend((): S.Schema<BaseSchema> => BaseSchema),
+    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
   ),
 }
 
@@ -59,7 +59,7 @@ const MetadataFields = {
   definitions: S.optional(
     S.Record({
       key: S.String,
-      value: S.suspend((): S.Schema<TypedSchema> => TypedSchema),
+      value: S.suspend((): S.Schema<JsonSchema> => JsonSchema),
     }),
   ),
 }
@@ -90,14 +90,8 @@ const makeBaseFields = (
       schema ? S.Array(schema) : S.Never,
       S.optional,
     ),
-    // 'not' keyword works alongside other keywords in the schema, and all conditions are combined with a logical AND.
-    // todo narrow only to validation keywords?
   }
 }
-
-export class BaseSchema extends S.Class<BaseSchema>("BaseSchema")({
-  ...makeBaseFields(),
-}) {}
 
 export class BooleanSchema extends S.Class<BooleanSchema>("BooleanSchema")({
   ...makeBaseFields(S.Boolean),
@@ -147,90 +141,6 @@ export class NullSchema extends S.Class<NullSchema>("NullSchema")({
   ...makeBaseFields(S.Null),
 
   type: S.Literal("null"),
-}) {}
-
-export class NumberSchema extends S.Class<NumberSchema>("NumberSchema")({
-  ...makeBaseFields(S.Number),
-
-  type: S.Literal("number"),
-  minimum: pipe(
-    S.Number,
-    S.optional,
-  ),
-  maximum: pipe(
-    S.Number,
-    S.optional,
-  ),
-  exclusiveMinimum: pipe(
-    S.Number,
-    S.optional,
-  ),
-  exclusiveMaximum: pipe(
-    S.Number,
-    S.optional,
-  ),
-  multipleOf: pipe(
-    S.Number,
-    S.optional,
-  ),
-}) {}
-
-export class IntegerSchema extends S.Class<IntegerSchema>("IntegerSchema")({
-  ...NumberSchema.fields,
-  ...makeBaseFields(S.Int),
-
-  type: S.Literal("integer"),
-}) {}
-
-export class ObjectSchema extends S.Class<ObjectSchema>("ObjectSchema")({
-  ...makeBaseFields(
-    S.Record({
-      key: S.String,
-      value: S.Any,
-    }),
-  ),
-
-  type: S.Literal("object"),
-  // is there a way to do keyof?
-  required: pipe(
-    S.Array(S.String),
-    S.optional,
-  ),
-  properties: pipe(
-    S.Record({
-      key: S.String,
-      value: S.suspend((): typeof BaseSchema => BaseSchema),
-    }),
-    S.optional,
-  ),
-  additionalProperties: pipe(
-    S.Union(
-      S.suspend((): typeof BaseSchema => BaseSchema),
-      S.Literal(false),
-    ),
-    S.optional,
-  ),
-  propertyNames: pipe(
-    S.suspend((): S.Schema<StringSchema> => StringSchema),
-    S.optional,
-  ),
-  patternProperties: pipe(
-    S.Record({
-      key: S.String,
-      value: S.suspend((): typeof BaseSchema => BaseSchema),
-    }),
-    S.optional,
-  ),
-  dependencies: pipe(
-    S.Record({
-      key: S.String,
-      value: S.Union(
-        S.Array(S.String),
-        S.suspend((): S.Schema<BaseSchema> => BaseSchema),
-      ),
-    }),
-    S.optional,
-  ),
 }) {}
 
 export class StringSchema extends S.Class<StringSchema>("StringSchema")({
@@ -295,6 +205,83 @@ export class StringSchema extends S.Class<StringSchema>("StringSchema")({
   ),
 }) {}
 
+export class NumberSchema extends S.Class<NumberSchema>("NumberSchema")({
+  ...makeBaseFields(S.Number),
+  type: S.Literal("number"),
+  minimum: pipe(
+    S.Number,
+    S.optional,
+  ),
+  maximum: pipe(
+    S.Number,
+    S.optional,
+  ),
+  exclusiveMinimum: pipe(
+    S.Number,
+    S.optional,
+  ),
+  exclusiveMaximum: pipe(
+    S.Number,
+    S.optional,
+  ),
+  multipleOf: pipe(
+    S.Number,
+    S.optional,
+  ),
+}) {}
+
+export class IntegerSchema extends S.Class<IntegerSchema>("IntegerSchema")({
+  ...NumberSchema.fields,
+  ...makeBaseFields(S.Int),
+  type: S.Literal("integer"),
+}) {}
+
+export class ObjectSchema extends S.Class<ObjectSchema>("ObjectSchema")({
+  ...makeBaseFields(
+    S.Record({
+      key: S.String,
+      value: S.Any,
+    }),
+  ),
+  type: S.Literal("object"),
+  // is there a way to do keyof?
+  required: pipe(
+    S.Array(S.String),
+    S.optional,
+  ),
+  properties: S.optional(
+    S.Record({
+      key: S.String,
+      value: S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+    }),
+  ),
+  additionalProperties: S.optional(
+    S.Union(
+      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+      S.Literal(false),
+    ),
+  ),
+  propertyNames: pipe(
+    StringSchema,
+    S.optional,
+  ),
+  patternProperties: S.optional(
+    S.Record({
+      key: S.String,
+      value: S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+    }),
+  ),
+  dependencies: S.optional(
+    S.Record({
+      key: S.String,
+      value: S.Union(
+        S.Array(S.String),
+        S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+      ),
+    }),
+  ),
+}) {}
+
 export const TypeSchemas = [
   StringSchema,
   IntegerSchema,
@@ -315,13 +302,18 @@ export const TypeNames = [
   "object",
 ] as const
 
+const JsonPointer = pipe(
+  S.String,
+  S.pattern(/^#\/.*$/),
+)
+
 const TypeLiteral = S.Literal(...TypeNames)
 
 /**
  * JSON Schema can have multiple types and the validation fields are named in a way
  * that they don't conflict across types.
  */
-export class TypedSchema extends S.Class<TypedSchema>("TypedSchema")({
+export class JsonSchema extends S.Class<JsonSchema>("JsonSchema")({
   ...StringSchema.fields,
   ...IntegerSchema.fields,
   ...NumberSchema.fields,
@@ -343,6 +335,11 @@ export class TypedSchema extends S.Class<TypedSchema>("TypedSchema")({
     }),
   )),
 
+  $ref: pipe(
+    JsonPointer,
+    S.optional,
+  ),
+
   type: pipe(
     S.Union(
       TypeLiteral,
@@ -351,19 +348,3 @@ export class TypedSchema extends S.Class<TypedSchema>("TypedSchema")({
     S.optional,
   ),
 }) {}
-
-const JsonPointer = pipe(
-  S.String,
-  S.pattern(/^#\/.*$/),
-)
-
-const RefSchema = S.Struct({
-  $ref: JsonPointer,
-})
-
-export const JsonSchema = S.Union(
-  RefSchema,
-  TypedSchema,
-).annotations({
-  name: "JsonSchema",
-})
