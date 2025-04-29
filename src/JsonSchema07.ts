@@ -1,71 +1,60 @@
 /**
  * See: https://www.learnjsonschema.com/draft7/
  * @see https://json-schema.org/learn/glossary
+ * @see https://cswr.github.io/JsonSchema
  */
-import { pipe, Schema as S } from "effect"
+import { pipe, Schema } from "effect"
+
+const SchemaRecur = Schema.suspend((): Schema.Schema<JsonSchema> => JsonSchema)
 
 const CombinatorFields = {
-  allOf: S.optional(
-    S.Array(
-      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-    ),
+  allOf: Schema.optional(
+    Schema.Array(SchemaRecur),
   ),
-  anyOf: S.optional(
-    S.Array(
-      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-    ),
+  anyOf: Schema.optional(
+    Schema.Array(SchemaRecur),
   ),
-  oneOf: S.optional(
-    S.Array(
-      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-    ),
+  oneOf: Schema.optional(
+    Schema.Array(SchemaRecur),
   ),
   // 'not' keyword works alongside other keywords in the schema, and all conditions are combined with a logical AND.
   // todo narrow only to validation keywords?
-  not: S.optional(
-    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-  ),
-  if: S.optional(
-    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-  ),
-  then: S.optional(
-    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-  ),
-  else: S.optional(
-    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-  ),
+  not: Schema.optional(SchemaRecur),
+  if: Schema.optional(SchemaRecur),
+  then: Schema.optional(SchemaRecur),
+  else: Schema.optional(SchemaRecur),
 }
 
 const MetadataFields = {
   $id: pipe(
-    S.String,
-    S.optional,
+    Schema.String,
+    Schema.optional,
   ),
   $schema: pipe(
-    S.Union(
-      S.Literal("http://json-schema.org/draft-07/schema#"),
-      S.String,
+    Schema.Union(
+      Schema.Literal("http://json-schema.org/draft-07/schema#"),
+      Schema.String,
     ),
-    S.optional,
+    Schema.optional,
   ),
   title: pipe(
-    S.String,
-    S.optional,
+    Schema.String,
+    Schema.optional,
   ),
   description: pipe(
-    S.String,
-    S.optional,
+    Schema.String,
+    Schema.optional,
   ),
-  definitions: S.optional(
-    S.Record({
-      key: S.String,
-      value: S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  definitions: Schema.optional(
+    Schema.Record({
+      key: Schema.String,
+      value: SchemaRecur,
     }),
   ),
 }
 
 const makeBaseFields = (
-  schema?: S.Schema<any, any, never>,
+  schema?: Schema.Schema<any, any, never>,
   type?: typeof TypeNames[number],
 ) => {
   return {
@@ -74,219 +63,217 @@ const makeBaseFields = (
 
     type: type
       ? pipe(
-        S.Literal(type),
-        S.optional,
+        Schema.Literal(type),
+        Schema.optional,
       )
-      : S.Never,
+      : Schema.Never,
 
     const: pipe(
-      schema ?? S.Never,
-      S.optional,
+      schema ?? Schema.Never,
+      Schema.optional,
     ),
     // The default keyword is a metadata annotation, not a validation keyword.
     // It does not enforce that the default value must conform to the schema's type
     // or other constraints (e.g., minLength, minimum, enum).
     default: pipe(
-      S.Any,
-      S.optional,
+      Schema.Any,
+      Schema.optional,
     ),
     examples: pipe(
-      schema ? S.Array(schema) : S.Never,
-      S.optional,
+      schema ? Schema.Array(schema) : Schema.Never,
+      Schema.optional,
     ),
     enum: pipe(
-      schema ? S.Array(schema) : S.Never,
-      S.optional,
+      schema ? Schema.Array(schema) : Schema.Never,
+      Schema.optional,
     ),
   }
 }
 
-export class BooleanSchema extends S.Class<BooleanSchema>("BooleanSchema")({
-  ...makeBaseFields(S.Boolean),
+export class BooleanSchema extends Schema.Class<BooleanSchema>("BooleanSchema")({
+  ...makeBaseFields(Schema.Boolean),
 
-  type: S.Literal("boolean"),
+  type: Schema.Literal("boolean"),
 }) {}
 
 // todo: make it generic somehow?
-export class ArraySchema extends S.Class<ArraySchema>("ArraySchema")({
+export class ArraySchema extends Schema.Class<ArraySchema>("ArraySchema")({
   ...makeBaseFields(
-    S.Array(
-      S.Any,
+    Schema.Array(
+      Schema.Any,
     ),
     "array",
   ),
 
-  items: S.optional(
-    S.Union(
-      // TODO: when items is an array, treat it as tuple-like. note that by default
-      // its possible to have fewer elements). to change that, set additionalItems=false
-      // https://cswr.github.io/JsonSchema/spec/arrays/
-      S.Array(
-        S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-      ),
-      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  items: Schema.optional(
+    // TODO: when items is an array, treat it as tuple-like. note that by default
+    // its possible to have fewer elements). to change that, set additionalItems=false
+    // https://cswr.github.io/JsonSchema/spec/arrays/
+    Schema.Union(
+      Schema.Array(SchemaRecur),
+      SchemaRecur,
     ),
   ),
-  additionalItems: S.optional(
-    S.Union(
-      S.Boolean,
-      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  additionalItems: Schema.optional(
+    Schema.Union(
+      Schema.Boolean,
+      SchemaRecur,
     ),
   ),
   minItems: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   maxItems: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   uniqueItems: pipe(
-    S.Boolean,
-    S.optional,
+    Schema.Boolean,
+    Schema.optional,
   ),
-  contains: S.optional(
-    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  contains: Schema.optional(
+    SchemaRecur,
   ),
 }) {}
 
-export class NullSchema extends S.Class<NullSchema>("NullSchema")({
-  ...makeBaseFields(S.Null),
+export class NullSchema extends Schema.Class<NullSchema>("NullSchema")({
+  ...makeBaseFields(Schema.Null),
 
-  type: S.Literal("null"),
+  type: Schema.Literal("null"),
 }) {}
 
-export class StringSchema extends S.Class<StringSchema>("StringSchema")({
-  ...makeBaseFields(S.String, "string"),
+export class StringSchema extends Schema.Class<StringSchema>("StringSchema")({
+  ...makeBaseFields(Schema.String, "string"),
 
   minLength: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   maxLength: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   pattern: pipe(
-    S.String,
-    S.optional,
+    Schema.String,
+    Schema.optional,
   ),
   format: pipe(
-    S.Union(
-      S.Literal("date-time"),
-      S.Literal("date"),
-      S.Literal("time"),
-      S.Literal("email"),
-      S.Literal("idn-email"),
-      S.Literal("hostname"),
-      S.Literal("idn-hostname"),
-      S.Literal("ipv4"),
-      S.Literal("ipv6"),
-      S.Literal("uri"),
-      S.Literal("uri-reference"),
-      S.Literal("iri"),
-      S.Literal("iri-reference"),
-      S.Literal("uuid"),
-      S.Literal("json-pointer"),
-      S.Literal("relative-json-pointer"),
-      S.Literal("regex"),
+    Schema.Union(
+      Schema.Literal("date-time"),
+      Schema.Literal("date"),
+      Schema.Literal("time"),
+      Schema.Literal("email"),
+      Schema.Literal("idn-email"),
+      Schema.Literal("hostname"),
+      Schema.Literal("idn-hostname"),
+      Schema.Literal("ipv4"),
+      Schema.Literal("ipv6"),
+      Schema.Literal("uri"),
+      Schema.Literal("uri-reference"),
+      Schema.Literal("iri"),
+      Schema.Literal("iri-reference"),
+      Schema.Literal("uuid"),
+      Schema.Literal("json-pointer"),
+      Schema.Literal("relative-json-pointer"),
+      Schema.Literal("regex"),
       // Allow custom formats
-      S.String,
+      Schema.String,
     ),
-    S.optional,
+    Schema.optional,
   ),
   // @see: https://json-schema.org/understanding-json-schema/reference/non_json_data
   contentMediaType: pipe(
-    S.String,
-    S.optional,
+    Schema.String,
+    Schema.optional,
   ),
   // @see: https://www.learnjsonschema.com/2020-12/content/contentencoding/
   contentEncoding: pipe(
-    S.Union(
-      S.Literal("7bit"),
-      S.Literal("8bit"),
-      S.Literal("binary"),
-      S.Literal("base64"),
-      S.Literal("base32"),
-      S.Literal("base16"),
-      S.Literal("quoted-printable"),
-      S.Literal("binary"),
-      S.String,
+    Schema.Union(
+      Schema.Literal("7bit"),
+      Schema.Literal("8bit"),
+      Schema.Literal("binary"),
+      Schema.Literal("base64"),
+      Schema.Literal("base32"),
+      Schema.Literal("base16"),
+      Schema.Literal("quoted-printable"),
+      Schema.Literal("binary"),
+      Schema.String,
     ),
-    S.optional,
+    Schema.optional,
   ),
 }) {}
 
-export class NumberSchema extends S.Class<NumberSchema>("NumberSchema")({
-  ...makeBaseFields(S.Number, "number"),
+export class NumberSchema extends Schema.Class<NumberSchema>("NumberSchema")({
+  ...makeBaseFields(Schema.Number, "number"),
   minimum: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   maximum: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   exclusiveMinimum: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   exclusiveMaximum: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
   multipleOf: pipe(
-    S.Number,
-    S.optional,
+    Schema.Number,
+    Schema.optional,
   ),
 }) {}
 
-export class IntegerSchema extends S.Class<IntegerSchema>("IntegerSchema")({
+export class IntegerSchema extends Schema.Class<IntegerSchema>("IntegerSchema")({
   ...NumberSchema.fields,
-  ...makeBaseFields(S.Int, "integer"),
+  ...makeBaseFields(Schema.Int, "integer"),
 }) {}
 
-export class ObjectSchema extends S.Class<ObjectSchema>("ObjectSchema")({
+export class ObjectSchema extends Schema.Class<ObjectSchema>("ObjectSchema")({
   ...makeBaseFields(
-    S.Record({
-      key: S.String,
-      value: S.Any,
+    Schema.Record({
+      key: Schema.String,
+      value: Schema.Any,
     }),
     "object",
   ),
   // is there a way to do keyof?
   required: pipe(
-    S.Array(S.String),
-    S.optional,
+    Schema.Array(Schema.String),
+    Schema.optional,
   ),
-  properties: S.optional(
-    S.Record({
-      key: S.String,
-      value: S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  properties: Schema.optional(
+    Schema.Record({
+      key: Schema.String,
+      value: SchemaRecur,
     }),
   ),
-  additionalProperties: S.optional(
-    S.Union(
-      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
-      S.Literal(false),
+  additionalProperties: Schema.optional(
+    Schema.Union(
+      SchemaRecur,
+      Schema.Literal(false),
     ),
   ),
   propertyNames: pipe(
     StringSchema,
-    S.optional,
+    Schema.optional,
   ),
-  patternProperties: S.optional(
-    S.Record({
-      key: S.String,
-      value: S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  patternProperties: Schema.optional(
+    Schema.Record({
+      key: Schema.String,
+      value: SchemaRecur,
     }),
   ),
-  dependencies: S.optional(
-    S.Record({
-      key: S.String,
-      value: S.Union(
-        S.Array(S.String),
-        S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+  dependencies: Schema.optional(
+    Schema.Record({
+      key: Schema.String,
+      value: Schema.Union(
+        Schema.Array(Schema.String),
+        SchemaRecur,
       ),
     }),
   ),
@@ -313,16 +300,16 @@ export const TypeNames = [
 ] as const
 
 const JsonPointer = pipe(
-  S.String,
+  Schema.String,
 )
 
-const TypeLiteral = S.Literal(...TypeNames)
+const TypeLiteral = Schema.Literal(...TypeNames)
 
 /**
  * JSON Schema can have multiple types and the validation fields are named in a way
  * that they don't conflict across types.
  */
-export class JsonSchema extends S.Class<JsonSchema>("JsonSchema")({
+export class JsonSchema extends Schema.Class<JsonSchema>("JsonSchema")({
   ...StringSchema.fields,
   ...IntegerSchema.fields,
   ...NumberSchema.fields,
@@ -333,28 +320,28 @@ export class JsonSchema extends S.Class<JsonSchema>("JsonSchema")({
 
   // spread it after previous schemas to make sure common fields
   // support all types
-  ...makeBaseFields(S.Union(
-    S.String,
-    S.Number,
-    S.Boolean,
-    S.Null,
-    S.Array(S.Any),
-    S.Record({
-      key: S.String,
-      value: S.Any,
+  ...makeBaseFields(Schema.Union(
+    Schema.String,
+    Schema.Number,
+    Schema.Boolean,
+    Schema.Null,
+    Schema.Array(Schema.Any),
+    Schema.Record({
+      key: Schema.String,
+      value: Schema.Any,
     }),
   )),
 
   type: pipe(
-    S.Union(
+    Schema.Union(
       TypeLiteral,
-      S.Array(TypeLiteral),
+      Schema.Array(TypeLiteral),
     ),
-    S.optional,
+    Schema.optional,
   ),
 
   $ref: pipe(
     JsonPointer,
-    S.optional,
+    Schema.optional,
   ),
 }) {}
