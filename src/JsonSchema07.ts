@@ -66,10 +66,18 @@ const MetadataFields = {
 
 const makeBaseFields = (
   schema?: S.Schema<any, any, never>,
+  type?: typeof TypeNames[number],
 ) => {
   return {
     ...MetadataFields,
     ...CombinatorFields,
+
+    type: type
+      ? pipe(
+        S.Literal(type),
+        S.optional,
+      )
+      : S.Never,
 
     const: pipe(
       schema ?? S.Never,
@@ -105,19 +113,24 @@ export class ArraySchema extends S.Class<ArraySchema>("ArraySchema")({
     S.Array(
       S.Any,
     ),
+    "array",
   ),
 
-  type: S.Literal("array"),
-  items: pipe(
-    S.Array(
-      S.suspend((): typeof JsonSchema => JsonSchema),
+  items: S.optional(
+    S.Union(
+      // TODO: when items is an array, treat it as tuple-like. note that by default
+      // its possible to have fewer elements). to change that, set additionalItems=false
+      // https://cswr.github.io/JsonSchema/spec/arrays/
+      S.Array(
+        S.suspend((): S.Schema<JsonSchema> => JsonSchema),
+      ),
+      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
     ),
-    S.optional,
   ),
   additionalItems: S.optional(
     S.Union(
       S.Boolean,
-      S.suspend((): typeof JsonSchema => JsonSchema),
+      S.suspend((): S.Schema<JsonSchema> => JsonSchema),
     ),
   ),
   minItems: pipe(
@@ -133,7 +146,7 @@ export class ArraySchema extends S.Class<ArraySchema>("ArraySchema")({
     S.optional,
   ),
   contains: S.optional(
-    S.suspend((): typeof JsonSchema => JsonSchema),
+    S.suspend((): S.Schema<JsonSchema> => JsonSchema),
   ),
 }) {}
 
@@ -144,9 +157,8 @@ export class NullSchema extends S.Class<NullSchema>("NullSchema")({
 }) {}
 
 export class StringSchema extends S.Class<StringSchema>("StringSchema")({
-  ...makeBaseFields(S.String),
+  ...makeBaseFields(S.String, "string"),
 
-  type: S.Literal("string"),
   minLength: pipe(
     S.Number,
     S.optional,
@@ -206,8 +218,7 @@ export class StringSchema extends S.Class<StringSchema>("StringSchema")({
 }) {}
 
 export class NumberSchema extends S.Class<NumberSchema>("NumberSchema")({
-  ...makeBaseFields(S.Number),
-  type: S.Literal("number"),
+  ...makeBaseFields(S.Number, "number"),
   minimum: pipe(
     S.Number,
     S.optional,
@@ -232,8 +243,7 @@ export class NumberSchema extends S.Class<NumberSchema>("NumberSchema")({
 
 export class IntegerSchema extends S.Class<IntegerSchema>("IntegerSchema")({
   ...NumberSchema.fields,
-  ...makeBaseFields(S.Int),
-  type: S.Literal("integer"),
+  ...makeBaseFields(S.Int, "integer"),
 }) {}
 
 export class ObjectSchema extends S.Class<ObjectSchema>("ObjectSchema")({
@@ -242,8 +252,8 @@ export class ObjectSchema extends S.Class<ObjectSchema>("ObjectSchema")({
       key: S.String,
       value: S.Any,
     }),
+    "object",
   ),
-  type: S.Literal("object"),
   // is there a way to do keyof?
   required: pipe(
     S.Array(S.String),
@@ -304,7 +314,6 @@ export const TypeNames = [
 
 const JsonPointer = pipe(
   S.String,
-  S.pattern(/^#\/.*$/),
 )
 
 const TypeLiteral = S.Literal(...TypeNames)
@@ -320,6 +329,7 @@ export class JsonSchema extends S.Class<JsonSchema>("JsonSchema")({
   ...BooleanSchema.fields,
   ...NullSchema.fields,
   ...ObjectSchema.fields,
+  ...ArraySchema.fields,
 
   // spread it after previous schemas to make sure common fields
   // support all types
@@ -335,16 +345,16 @@ export class JsonSchema extends S.Class<JsonSchema>("JsonSchema")({
     }),
   )),
 
-  $ref: pipe(
-    JsonPointer,
-    S.optional,
-  ),
-
   type: pipe(
     S.Union(
       TypeLiteral,
       S.Array(TypeLiteral),
     ),
+    S.optional,
+  ),
+
+  $ref: pipe(
+    JsonPointer,
     S.optional,
   ),
 }) {}
