@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { test } from "bun:test"
 import { Schema, SchemaAST } from "effect"
 import MetaschemaDraft07 from "../samples/JsonSchemaDraft07MetaSchema.json" with {
   type: "json",
@@ -11,15 +11,18 @@ const effect = effectFn()
 
 SchemaAST.Union
 
-test.skip("parse", () =>
+test("parse", () =>
   effect(function*() {
-    console.log(JsonSchema07.JsonSchema.ast)
-    // const decodedSchema = yield* Schema.decodeUnknown(JsonSchema07.JsonSchema)(
-    //   MetaschemaDraft07,
-    // )
-    // const effectSchema = yield* Schema.decodeUnknown(EffectSchema.JsonSchemaDocument)(
-    //   decodedSchema,
-    // )
-    //
-    // console.log(effectSchema)
+    const decodedSchema = yield* Schema.decodeUnknown(JsonSchema07.FullSchema)(
+      MetaschemaDraft07,
+    )
+    const effectSchema = yield* Schema.decodeUnknown(EffectSchema.FullSchema)(
+      decodedSchema,
+    )
+
+    console.log(
+      Schema.decode(effectSchema)({
+        $ref: 23,
+      }),
+    )
   }))

@@ -2,15 +2,15 @@ import {
   Array,
   Effect,
   identity,
+  Iterable,
   MutableRef,
   Option,
   ParseResult,
   pipe,
   Schema as S,
-  SchemaAST,
 } from "effect"
-import type { ParseOptions } from "effect/SchemaAST"
 import * as JsonSchema from "./JsonSchema07.ts"
+import { transformSchema } from "./utils.ts"
 
 class JsonSchemaContext extends Effect.Service<JsonSchemaContext>()("JsonSchemaContext", {
   effect: Effect.gen(function*() {
@@ -24,9 +24,9 @@ class JsonSchemaContext extends Effect.Service<JsonSchemaContext>()("JsonSchemaC
   }),
 }) {}
 
-const JsonSchemaRef = S.transformOrFail(
-  JsonSchema.JsonSchemaRef,
-  JsonSchema.JsonSchema,
+const RefSchema = S.transformOrFail(
+  JsonSchema.RefSchema,
+  JsonSchema.FullSchema,
   {
     strict: true,
     decode: (input, options, ast) =>
@@ -49,13 +49,13 @@ const JsonSchemaRef = S.transformOrFail(
   },
 )
 
-const BooleanSchema = transform(
+const BooleanSchema = transformSchema(
   JsonSchema.BooleanSchema,
   (v) => Effect.succeed(S.Boolean),
 )
 
 // TODO: implement rest of the parameters
-const ArraySchema = transform(
+const ArraySchema = transformSchema(
   JsonSchema.ArraySchema,
   (v) =>
     Effect.succeed(
@@ -77,12 +77,12 @@ const ArraySchema = transform(
     ),
 )
 
-const NullSchema = transform(
+const NullSchema = transformSchema(
   JsonSchema.NullSchema,
   (v) => Effect.succeed(S.Null),
 )
 
-const StringSchema = transform(
+const StringSchema = transformSchema(
   JsonSchema.StringSchema,
   (v) =>
     Effect.succeed(pipe(
@@ -99,7 +99,7 @@ const StringSchema = transform(
     )),
 )
 
-const NumberSchema = transform(
+const NumberSchema = transformSchema(
   JsonSchema.NumberSchema,
   (v) =>
     Effect.succeed(pipe(
@@ -119,7 +119,7 @@ const NumberSchema = transform(
     )),
 )
 
-const IntegerSchema = transform(
+const IntegerSchema = transformSchema(
   JsonSchema.IntegerSchema,
   (v) =>
     Effect.succeed(pipe(
@@ -139,7 +139,7 @@ const IntegerSchema = transform(
     )),
 )
 
-const ObjectSchema = transform(
+const ObjectSchema = transformSchema(
   JsonSchema.ObjectSchema,
   (v) =>
     Effect.succeed(
@@ -152,103 +152,52 @@ const ObjectSchema = transform(
     ),
 )
 
-function transform<
-  From extends S.Schema.Any,
-  To extends S.Annotable.All,
-  R = never,
->(
-  from: From,
-  decode: (
-    fromA: S.Schema.Type<From>,
-    options: ParseOptions,
-    ast: SchemaAST.Transformation,
-    fromI: S.Schema.Encoded<From>,
-  ) => Effect.Effect<S.Schema.Encoded<To>, ParseResult.ParseIssue, R>,
-) {
-  return S.transformOrFail(from, S.Any, {
-    strict: true,
-    decode: (fromA, options, ast, fromI) =>
-      pipe(
-        decode(fromA, options, ast, fromI),
-        Effect.map(
-          S.annotations({
-            title: fromA.title,
-            default: fromA.default,
-            examples: fromA.examples as any,
-            jsonSchema: {
-              contentEncoding: fromA.contentEncoding,
-              contentMediaType: fromA.contentMediaType,
-            },
-          }),
-        ),
-      ),
-    encode: (input, parseOptions, ast) => {
-      return ParseResult.fail(
-        new ParseResult.Forbidden(
-          ast,
-          input,
-        ),
-      )
-    },
-  })
-}
-
 export const TypedSchema = S.Union(
+  ObjectSchema,
+  ArraySchema,
   StringSchema,
   IntegerSchema,
   NumberSchema,
   BooleanSchema,
   NullSchema,
-  ArraySchema,
-  ObjectSchema,
 )
 
-const MultiTypedSchema = pipe(
-  S.Struct(
-    {
-      type: S.Array(JsonSchema.TypeLiteral),
-    },
-    S.Record({
-      key: S.String,
-      value: S.Any,
-    }),
-  ),
-  S.transformOrFail(
-    TypedSchema,
-    {
-      strict: true,
-      decode: (fromA, options, ast, fromI) => {
-        const values = fromA.type.map(type => ({
-          ...fromA,
-          type,
-        }))
-        const matched = Option.firstSomeOf(
-          values.map(v => S.decodeOption(JsonSchema.TypedSchema)(v)),
-        )
+export const UntypedSchema = transformSchema(
+  JsonSchema.UntypedSchema,
+  (v, _, ast) => {
+    const match = pipe(
+      S.decodeOption(JsonSchema.ExpandedUntypedSchema)(v),
+      Option.map(S.decode(TypedSchema)),
+    )
 
-        return ParseResult.fromOption(
-          matched,
-          () => new ParseResult.Type(ast, fromA),
-        )
-      },
-      encode: (fromA, parseOptions, ast) => {
-        return ParseResult.fail(
-          new ParseResult.Forbidden(
-            ast,
-            fromA,
-          ),
-        )
-      },
-    },
-  ),
-  S.compose(TypedSchema),
+    return ParseResult.fromOption(
+      match,
+      () => new ParseResult.Type(ast, v),
+    )
+  },
 )
 
-// Order is important here.
-export const JsonSchemaDocument = S.Union(
-  // resolve refs first as they have strict shape
-  JsonSchemaRef,
-  // check singular types
-  ...TypedSchema.members,
-  MultiTypedSchema,
+export const MultitypedSchema = transformSchema(
+  JsonSchema.MultitypedSchema,
+  (v, _, ast) => {
+    const values = v.type.map(type => ({
+      ...v,
+      type,
+    }))
+    const match = Option.firstSomeOf(
+      values.map(v => S.decodeOption(TypedSchema)(v)),
+    )
+
+    return ParseResult.fromOption(
+      match,
+      () => new ParseResult.Type(ast, v),
+    )
+  },
+)
+
+export const FullSchema = S.Union(
+  RefSchema,
+  TypedSchema,
+  MultitypedSchema,
+  UntypedSchema,
 )

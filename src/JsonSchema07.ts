@@ -1,11 +1,11 @@
 /**
- * See: https://www.learnjsonschema.com/draft7/
+ * @see https://www.learnjsonschema.com/draft7/
  * @see https://json-schema.org/learn/glossary
  * @see https://cswr.github.io/JsonSchema
  */
 import { Option, ParseResult, pipe, Schema as S } from "effect"
 
-const SchemaRecur = S.suspend((): S.Schema<JsonSchemaLoose> => JsonSchema as any)
+const SchemaRecur = S.suspend((): S.Schema<LooseJsonSchema> => FullSchema as any)
 
 const CombinatorFields = {
   allOf: S.optional(
@@ -303,35 +303,59 @@ const JsonPointer = pipe(
 )
 
 export const TypeNames = [
+  "object",
+  "array",
   "string",
   "integer",
   "number",
   "boolean",
   "null",
-  "array",
-  "object",
 ] as const
 
+export const TypeKeywordValue = S.Literal(...TypeNames)
+
+/**
+ * Schemas with a single 'type' keyword
+ */
 export const TypedSchema = S.Union(
+  ObjectSchema,
+  ArraySchema,
   StringSchema,
   IntegerSchema,
   NumberSchema,
   BooleanSchema,
   NullSchema,
-  ArraySchema,
-  ObjectSchema,
 )
 
-export const UntypedSchema = pipe(
-  S.Union(
-    StringSchema.pipe(S.omit("type")),
-    IntegerSchema.pipe(S.omit("type")),
-    NumberSchema.pipe(S.omit("type")),
-    BooleanSchema.pipe(S.omit("type")),
-    NullSchema.pipe(S.omit("type")),
-    ArraySchema.pipe(S.omit("type")),
-    ObjectSchema.pipe(S.omit("type")),
-  ),
+/**
+ * Schemas without a 'type' keyword
+ */
+export const UntypedSchema = S.Union(
+  ObjectSchema.pipe(S.omit("type")),
+  ArraySchema.pipe(S.omit("type")),
+  StringSchema.pipe(S.omit("type")),
+  IntegerSchema.pipe(S.omit("type")),
+  NumberSchema.pipe(S.omit("type")),
+  BooleanSchema.pipe(S.omit("type")),
+  NullSchema.pipe(S.omit("type")),
+)
+
+/**
+ * Schemas with a 'type' keyword that have multiple values.
+ */
+export const MultitypedSchema = S.extend(
+  UntypedSchema,
+  S.Struct({
+    type: S.Array(TypeKeywordValue),
+  }),
+)
+
+/**
+ * Tranform schema without a 'type' keyword to a schema with a 'type' keyword
+ * based on other keywords.
+ */
+export const ExpandedUntypedSchema = pipe(
+  UntypedSchema,
   S.transformOrFail(
     TypedSchema,
     {
@@ -363,26 +387,12 @@ export const UntypedSchema = pipe(
   ),
 )
 
-export const TypeLiteral = S.Literal(...TypeNames)
-
-export class JsonSchemaRef extends S.Class<JsonSchemaRef>("JsonSchemaRef")({
-  // this will never be evaluated from JsonSchema union but we need it
-  // to keep the same shape with the union
-  $ref: pipe(
-    JsonPointer,
-  ),
-}) {}
-
-const MultiTypedSchema = pipe(
-  S.Struct(
-    {
-      type: S.Array(TypeLiteral),
-    },
-    S.Record({
-      key: S.String,
-      value: S.Any,
-    }),
-  ),
+/**
+ * Transform multiple types into a single type based on keywords
+ * used in schema.
+ */
+const SingularizedMultitypedSchema = pipe(
+  MultitypedSchema,
   S.transformOrFail(
     TypedSchema,
     {
@@ -415,10 +425,21 @@ const MultiTypedSchema = pipe(
 )
 
 /**
+ * A reference to another schema.
+ */
+export class RefSchema extends S.Class<RefSchema>("RefSchema")({
+  $ref: pipe(
+    JsonPointer,
+  ),
+}) {}
+
+/**
  * JSON Schema can have multiple types and the validation fields are named in a way
  * that they don't conflict across types.
+ *
+ * We only use it as a type to avoid circular references.
  */
-class JsonSchemaLoose extends S.Class<JsonSchemaLoose>("JsonSchemaLoose")({
+class LooseJsonSchema extends S.Class<LooseJsonSchema>("LooseJsonSchema")({
   ...StringSchema.fields,
   ...IntegerSchema.fields,
   ...NumberSchema.fields,
@@ -443,8 +464,8 @@ class JsonSchemaLoose extends S.Class<JsonSchemaLoose>("JsonSchemaLoose")({
 
   type: pipe(
     S.Union(
-      TypeLiteral,
-      S.Array(TypeLiteral),
+      TypeKeywordValue,
+      S.Array(TypeKeywordValue),
     ),
     S.optional,
   ),
@@ -453,13 +474,9 @@ class JsonSchemaLoose extends S.Class<JsonSchemaLoose>("JsonSchemaLoose")({
 }
 
 // Order is important here.
-export const JsonSchema = S.Union(
-  // resolve refs first as they have strict shape
-  JsonSchemaRef,
-  // check singular types
-  ...TypedSchema.members,
-  // MultiTypedSchema,
-  // UntypedSchema,
-  // check loose schemas when multiple formats are provided
-  JsonSchemaLoose,
+export const FullSchema = S.Union(
+  RefSchema,
+  TypedSchema,
+  MultitypedSchema,
+  UntypedSchema,
 )
