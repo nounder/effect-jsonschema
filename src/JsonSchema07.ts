@@ -3,9 +3,9 @@
  * @see https://json-schema.org/learn/glossary
  * @see https://cswr.github.io/JsonSchema
  */
-import { pipe, Schema as S } from "effect"
+import { Option, ParseResult, pipe, Schema as S } from "effect"
 
-const SchemaRecur = S.suspend((): S.Schema<JsonSchemaLoose> => JsonSchema)
+const SchemaRecur = S.suspend((): S.Schema<JsonSchemaLoose> => JsonSchema as any)
 
 const CombinatorFields = {
   allOf: S.optional(
@@ -298,15 +298,9 @@ export class ObjectSchema extends S.Class<ObjectSchema>("ObjectSchema")({
   ),
 }) {}
 
-export const TypeSchemas = [
-  StringSchema,
-  IntegerSchema,
-  NumberSchema,
-  BooleanSchema,
-  NullSchema,
-  ArraySchema,
-  ObjectSchema,
-] as const
+const JsonPointer = pipe(
+  S.String,
+)
 
 export const TypeNames = [
   "string",
@@ -318,11 +312,58 @@ export const TypeNames = [
   "object",
 ] as const
 
-const JsonPointer = pipe(
-  S.String,
+export const TypedSchema = S.Union(
+  StringSchema,
+  IntegerSchema,
+  NumberSchema,
+  BooleanSchema,
+  NullSchema,
+  ArraySchema,
+  ObjectSchema,
 )
 
-const TypeLiteral = S.Literal(...TypeNames)
+export const UntypedSchema = pipe(
+  S.Union(
+    StringSchema.pipe(S.omit("type")),
+    IntegerSchema.pipe(S.omit("type")),
+    NumberSchema.pipe(S.omit("type")),
+    BooleanSchema.pipe(S.omit("type")),
+    NullSchema.pipe(S.omit("type")),
+    ArraySchema.pipe(S.omit("type")),
+    ObjectSchema.pipe(S.omit("type")),
+  ),
+  S.transformOrFail(
+    TypedSchema,
+    {
+      strict: true,
+      decode: (fromA, options, ast, fromI) => {
+        const matched = Option.firstSomeOf(
+          TypeNames.map((type) => {
+            return S.decodeOption(TypedSchema)({
+              ...fromA,
+              type: "string",
+            })
+          }),
+        )
+
+        return ParseResult.fromOption(
+          matched,
+          () => new ParseResult.Type(ast, fromA),
+        )
+      },
+      encode: (fromA, parseOptions, ast) => {
+        return ParseResult.fail(
+          new ParseResult.Forbidden(
+            ast,
+            fromA,
+          ),
+        )
+      },
+    },
+  ),
+)
+
+export const TypeLiteral = S.Literal(...TypeNames)
 
 export class JsonSchemaRef extends S.Class<JsonSchemaRef>("JsonSchemaRef")({
   // this will never be evaluated from JsonSchema union but we need it
@@ -332,11 +373,52 @@ export class JsonSchemaRef extends S.Class<JsonSchemaRef>("JsonSchemaRef")({
   ),
 }) {}
 
+const MultiTypedSchema = pipe(
+  S.Struct(
+    {
+      type: S.Array(TypeLiteral),
+    },
+    S.Record({
+      key: S.String,
+      value: S.Any,
+    }),
+  ),
+  S.transformOrFail(
+    TypedSchema,
+    {
+      strict: true,
+      decode: (fromA, options, ast, fromI) => {
+        const values = fromA.type.map(type => ({
+          ...fromA,
+          type,
+        }))
+        const matched = Option.firstSomeOf(
+          values.map(v => S.decodeOption(TypedSchema)(v)),
+        )
+
+        return ParseResult.fromOption(
+          matched,
+          () => new ParseResult.Type(ast, fromA),
+        )
+      },
+      encode: (fromA, parseOptions, ast) => {
+        return ParseResult.fail(
+          new ParseResult.Forbidden(
+            ast,
+            fromA,
+          ),
+        )
+      },
+    },
+  ),
+  S.compose(TypedSchema),
+)
+
 /**
  * JSON Schema can have multiple types and the validation fields are named in a way
  * that they don't conflict across types.
  */
-export class JsonSchemaLoose extends S.Class<JsonSchemaLoose>("JsonSchemaLoose")({
+class JsonSchemaLoose extends S.Class<JsonSchemaLoose>("JsonSchemaLoose")({
   ...StringSchema.fields,
   ...IntegerSchema.fields,
   ...NumberSchema.fields,
@@ -366,19 +448,18 @@ export class JsonSchemaLoose extends S.Class<JsonSchemaLoose>("JsonSchemaLoose")
     ),
     S.optional,
   ),
-
-  $ref: pipe(
-    JsonSchemaRef.fields.$ref,
-    S.optional,
-  ),
-}) {}
+}) {
+  readonly $ref?: string
+}
 
 // Order is important here.
 export const JsonSchema = S.Union(
   // resolve refs first as they have strict shape
   JsonSchemaRef,
   // check singular types
-  ...TypeSchemas,
+  ...TypedSchema.members,
+  // MultiTypedSchema,
+  // UntypedSchema,
   // check loose schemas when multiple formats are provided
   JsonSchemaLoose,
 )

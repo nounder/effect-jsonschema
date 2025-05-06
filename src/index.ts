@@ -1,1 +1,1 @@
-export * as JsonSchemaDraft07 from "./JsonSchemaDraft07.ts";
+export * as JsonSchema07 from "./JsonSchema07.ts"
